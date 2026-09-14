@@ -204,12 +204,21 @@ document.getElementById("form").addEventListener("submit", async (e) => {
 
   if (error) {
     msg.className = "err";
-    msg.textContent = "Ocurrió un error: " + error.message;
+    msg.textContent = /row-level security|policy/i.test(error.message || "")
+      ? "Ese email no está registrado o todavía no confirmó su dirección. Anotate en la página principal y confirmá el mail que te llega."
+      : "Ocurrió un error: " + error.message;
     return;
   }
 
   msg.className = "ok";
-  msg.innerHTML = "✅ Listo, quedó registrado. Seguí cargando cada novedad — tu próximo diagnóstico por mail se arma solo con esto.";
+  // Recordatorio para hacer seguimiento en 5 días (Google Calendar, sin cuenta nuestra)
+  const d = new Date(); d.setDate(d.getDate() + 5);
+  const ymd = d.toISOString().slice(0, 10).replace(/-/g, "");
+  const titulo = encodeURIComponent("Seguimiento postulación: " + [payload.puesto, payload.empresa].filter(Boolean).join(" @ "));
+  const det = encodeURIComponent("Si no hubo respuesta, mandá un mail corto de seguimiento o registrá el resultado en https://kxl100rx.github.io/trabajaya/seguimiento.html");
+  const cal = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${titulo}&dates=${ymd}/${ymd}&details=${det}`;
+  msg.innerHTML = "✅ Listo, quedó registrado. Seguí cargando cada novedad — tu próximo diagnóstico por mail se arma solo con esto." +
+    ` <br><a href="${cal}" target="_blank" rel="noopener" style="display:inline-block;margin-top:8px;color:#a78bfa;font-weight:bold">📅 Agendar recordatorio de seguimiento en 5 días</a>`;
   document.getElementById("empresa").value = "";
   document.getElementById("puesto").value = "";
   document.getElementById("portal").value = "";

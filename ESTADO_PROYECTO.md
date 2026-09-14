@@ -2,7 +2,7 @@
 
 > Este archivo existe para que cualquier sesión de Claude (o vos, Ruben) pueda
 > retomar el proyecto sin tener que re-explicar qué se hizo. Se actualiza cada
-> vez que hay un cambio de fondo. Última actualización: 14/09/2026.
+> vez que hay un cambio de fondo. Última actualización: 14/09/2026 (2do lote).
 
 ## Qué es esto
 Plataforma gratuita de alertas de empleo. Rastrea ofertas en portales grandes
@@ -92,6 +92,35 @@ formatos:
 - Tablero HTML interactivo, filtrable por fase, agrupado por categoría —
   persistido como artifact de Cowork en el escritorio de Ruben
   ("trabajaya-backlog").
+
+## Cambios del 14/09/2026 — 2do lote (Etapas 1 a 4, autónomo)
+**Pendiente de Ruben para activar el "modo nuevo": correr `supabase_migracion_2026-09.sql`
+en Supabase > SQL Editor (una sola vez, idempotente).** Hasta que no se corra, todo
+sigue funcionando en modo clásico (el script y el sitio lo detectan solos).
+
+- **Doble opt-in**: `signup()` RPC (reemplaza el upsert directo desde el navegador
+  y cierra el hueco de RLS), mail de confirmación con link a `confirmar.html`,
+  purga automática a los 14 días de no confirmar, `applications` solo acepta
+  emails confirmados.
+- **Centro de preferencias** `preferencias.html?t=<token>`: pausar/reanudar,
+  frecuencia (inmediato / resumen diario / resumen semanal), link de
+  invitación con contador de referidos, borrado total de la cuenta. Link en el
+  pie de todos los mails + header `List-Unsubscribe` con URL.
+- **Fuentes en español**: Computrabajo (publicadas hoy, AR/MX/CO/CL/PE/EC, ~180
+  avisos/corrida, filtradas por país del usuario salvo remotas) y Get on Board
+  (100 avisos, 35% con salario real).
+- **Badges** en cada oferta del mail: salario real cuando la fuente lo publica
+  (Remote OK, Remotive, Get on Board), ubicación, fuente.
+- **`ofertas.html`** pública con filtros y JobPosting JSON-LD (Google for Jobs),
+  alimentada por `data/ofertas.json` que el robot exporta y el workflow
+  commitea solo (permiso `contents: write`).
+- **PWA**: `manifest.json`, `sw.js`, íconos → instalable en el celular.
+- **Referidos**: `?ref=<email>` en el link de alta → columna `referred_by`.
+- `seguimiento.html`: link "Agendar recordatorio en 5 días" (Google Calendar) al
+  registrar una postulación.
+- Workflow: `actions/checkout@v5`, `setup-python@v6`, Python 3.12, cache pip,
+  concurrency, secret opcional `SUPPORT_EMAIL`.
+- `robots.txt`: no indexar confirmar/preferencias. `sitemap.xml`: + ofertas.html.
 
 ## Cambios del 14/09/2026 (lote consolidado, 27 días de backlog)
 - `scripts/match_and_notify.py`: URLs viejas `trabajoya` corregidas (4), 14 categorías

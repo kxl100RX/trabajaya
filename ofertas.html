@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Últimas ofertas de trabajo — trabajaya</title>
+<meta name="description" content="Ofertas de empleo publicadas hoy en Latinoamérica y remotas, revisadas por el detector de estafas de trabajaya. Se actualiza cada 2 horas.">
+<link rel="canonical" href="https://kxl100rx.github.io/trabajaya/ofertas.html">
+<meta property="og:title" content="Últimas ofertas de trabajo — trabajaya">
+<meta property="og:description" content="Ofertas de empleo de hoy, remotas y presenciales, con detector de estafas. Actualizado cada 2 horas.">
+<meta property="og:url" content="https://kxl100rx.github.io/trabajaya/ofertas.html">
+<meta property="og:image" content="https://kxl100rx.github.io/trabajaya/og-image.png">
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif; background:#0f0a1f; color:#e5e2f0; margin:0; padding:24px 16px 60px; line-height:1.55; }
+  .wrap { max-width: 820px; margin: 0 auto; }
+  h1 { color:#fff; font-size: 24px; margin: 8px 0 4px; }
+  .sub { color:#a1a1aa; font-size: 13px; margin: 0 0 16px; }
+  a { color:#a78bfa; }
+  .back { display:inline-block; color:#a78bfa; text-decoration:none; font-size:13px; }
+  .cta { background: linear-gradient(90deg,#6d28d9,#db2777); border-radius:12px; padding:14px 16px; margin: 14px 0 20px; color:#fff; font-size:14px; }
+  .cta a { color:#fff; font-weight:bold; }
+  .tools { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
+  .tools input { flex:1; min-width: 200px; padding:10px 12px; border-radius:10px; border:1px solid #3f3f46; background:#1c1533; color:#fff; font-size:14px; }
+  .tools select { padding:10px 12px; border-radius:10px; border:1px solid #3f3f46; background:#1c1533; color:#fff; font-size:14px; }
+  .job { background: rgba(255,255,255,.04); border:1px solid rgba(167,139,250,.25); border-radius:12px; padding:14px 16px; margin: 10px 0; }
+  .job h2 { font-size: 16px; margin: 0 0 4px; }
+  .job h2 a { color:#fff; text-decoration:none; }
+  .job h2 a:hover { text-decoration:underline; }
+  .badges { display:flex; gap:6px; flex-wrap:wrap; margin: 4px 0 6px; }
+  .b { font-size: 11px; border-radius:6px; padding:2px 7px; border:1px solid #3f3f46; color:#d4d4d8; }
+  .b.sal { background:#052e16; color:#86efac; border-color:#166534; }
+  .b.es { background:#1e1b4b; color:#c7d2fe; border-color:#3730a3; }
+  .desc { color:#b4b0c8; font-size: 13.5px; margin: 0; }
+  .warn { margin-top:8px; background:#3f1d1d; border:1px solid #7f1d1d; color:#fecaca; font-size:12px; border-radius:8px; padding:6px 8px; }
+  .empty { color:#a1a1aa; padding: 24px 0; text-align:center; }
+  .foot { color:#71717a; font-size:12px; margin-top:24px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="index.html">← Volver a trabajaya</a>
+  <h1>Últimas ofertas de trabajo</h1>
+  <p class="sub" id="meta">Cargando…</p>
+
+  <div class="cta">¿Querés que te lleguen por mail solo las que matchean con tu perfil, cada 2 horas y gratis?
+    <a href="index.html">Anotate en trabajaya →</a></div>
+
+  <div class="tools">
+    <input type="search" id="q" placeholder="Filtrar por puesto, empresa, ciudad… (ej: ventas, remoto, Córdoba)" aria-label="Filtrar ofertas">
+    <select id="src" aria-label="Fuente"><option value="">Todas las fuentes</option></select>
+    <select id="lang" aria-label="Idioma"><option value="">Todos los idiomas</option><option value="es">En español</option><option value="en">En inglés</option></select>
+  </div>
+
+  <div id="list" role="list"></div>
+  <p class="foot">Las ofertas son de portales públicos y pertenecen a quien las publicó. El detector de estafas marca patrones sospechosos pero puede equivocarse: <b>un empleo real nunca te cobra a vos</b>. <a href="transparencia.html">Cómo funciona</a>.</p>
+</div>
+
+<script>
+const esc = (s) => String(s || "").replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+let DATA = null;
+
+function render() {
+  const q = (document.getElementById("q").value || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+  const src = document.getElementById("src").value;
+  const lang = document.getElementById("lang").value;
+  const list = document.getElementById("list");
+  const rows = DATA.ofertas.filter((o) => {
+    if (src && o.s !== src) return false;
+    if (lang && o.lang !== lang) return false;
+    if (!q) return true;
+    const t = (o.t + " " + o.d + " " + o.loc + " " + o.s).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+    return q.split(/\s+/).every((w) => t.includes(w));
+  });
+  if (!rows.length) { list.innerHTML = '<div class="empty">No hay ofertas con ese filtro. Probá con menos palabras.</div>'; return; }
+  list.innerHTML = rows.map((o) => `
+    <article class="job" role="listitem">
+      <h2><a href="${esc(o.l)}" target="_blank" rel="noopener nofollow">${esc(o.t)}</a></h2>
+      <div class="badges">
+        ${o.sal ? `<span class="b sal">💰 ${esc(o.sal)}</span>` : ""}
+        ${o.loc ? `<span class="b">📍 ${esc(o.loc)}</span>` : ""}
+        <span class="b ${o.lang === "es" ? "es" : ""}">${o.lang === "es" ? "Español" : "Inglés"}</span>
+        <span class="b">${esc(o.s)}</span>
+      </div>
+      ${o.d ? `<p class="desc">${esc(o.d)}${o.d.length >= 250 ? "…" : ""}</p>` : ""}
+      ${o.alerta && o.alerta.length ? `<div class="warn">⚠️ Señales de alerta: ${esc(o.alerta.join(", "))}. Revisá bien antes de compartir datos o pagar cualquier monto.</div>` : ""}
+    </article>`).join("");
+}
+
+function injectJsonLd() {
+  // JobPosting por oferta (sin alertas de estafa) para Google for Jobs.
+  const items = DATA.ofertas.filter((o) => !(o.alerta && o.alerta.length)).slice(0, 60).map((o) => ({
+    "@context": "https://schema.org", "@type": "JobPosting",
+    "title": o.t, "description": o.d || o.t, "datePosted": DATA.generado.slice(0, 10),
+    "url": o.l, "hiringOrganization": { "@type": "Organization", "name": o.s },
+    "jobLocation": o.loc && !/remoto/i.test(o.loc) ? { "@type": "Place", "address": o.loc } : undefined,
+    "jobLocationType": /remoto|remote/i.test(o.loc || "") || !o.loc ? "TELECOMMUTE" : undefined,
+    "applicantLocationRequirements": !o.loc || /remoto|remote/i.test(o.loc) ? { "@type": "Country", "name": "Latin America" } : undefined,
+  }));
+  const s = document.createElement("script"); s.type = "application/ld+json";
+  s.textContent = JSON.stringify(items);
+  document.head.appendChild(s);
+}
+
+(async () => {
+  try {
+    const r = await fetch("data/ofertas.json", { cache: "no-store" });
+    if (!r.ok) throw new Error(r.status);
+    DATA = await r.json();
+  } catch (e) {
+    document.getElementById("meta").textContent = "Todavía no hay ofertas publicadas acá. El robot las genera en su próxima corrida (cada 2 horas).";
+    return;
+  }
+  const gen = new Date(DATA.generado);
+  document.getElementById("meta").textContent =
+    `${DATA.ofertas.length} ofertas · ${DATA.total_revisadas} revisadas en la última corrida · ${DATA.con_alerta} con señales de alerta · actualizado ${gen.toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" })}`;
+  const sel = document.getElementById("src");
+  (DATA.fuentes || []).forEach((f) => { const o = document.createElement("option"); o.value = f; o.textContent = f; sel.appendChild(o); });
+  ["q", "src", "lang"].forEach((id) => document.getElementById(id).addEventListener("input", render));
+  render();
+  injectJsonLd();
+})();
+</script>
+</body>
+</html>

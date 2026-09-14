@@ -14,6 +14,10 @@
 <title>trabajaya — Alertas de empleo gratis, para siempre</title>
 <meta name="description" content="Anotate una vez y recibí por mail las ofertas de empleo que matchean con tu perfil, cada 2 horas. Gratis para siempre — remoto y presencial, cualquier rubro y nivel.">
 <link rel="canonical" href="https://kxl100rx.github.io/trabajaya/">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0f0a1f">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
 <meta property="og:type" content="website">
 <meta property="og:title" content="trabajaya — El trabajo te busca a vos">
 <meta property="og:description" content="Alertas de empleo automáticas, gratis para siempre. Anotate una vez y recibí por mail las ofertas que matchean con tu perfil.">
@@ -471,7 +475,8 @@
   </form>
   <p class="footer-note"><span data-i18n="footer_note">Tus datos solo se usan para buscarte trabajo. Nadie más puede ver tu perfil.</span> ·
   <a href="privacidad.html" style="color:inherit;text-decoration:underline" data-i18n="footer_privacy">Privacidad y Términos</a> ·
-  <a href="transparencia.html" style="color:inherit;text-decoration:underline" data-i18n="footer_transparency">Cómo funciona</a></p>
+  <a href="transparencia.html" style="color:inherit;text-decoration:underline" data-i18n="footer_transparency">Cómo funciona</a> ·
+  <a href="ofertas.html" style="color:inherit;text-decoration:underline" data-i18n="footer_ofertas">Últimas ofertas</a></p>
 </div>
 
 <script>
@@ -537,6 +542,7 @@ const I18N = {
     submit_btn: "Activate my free alerts",
     footer_note: "Your data is only used to search for jobs for you. No one else can see your profile.",
     footer_transparency: "How it works",
+    footer_ofertas: "Latest jobs",
     footer_privacy: "Privacy & Terms",
   },
 };
@@ -1398,19 +1404,36 @@ document.getElementById("form").addEventListener("submit", async (e) => {
   const city = document.getElementById("city").value.trim();
   const travelRadius = document.getElementById("travelRadius").value;
 
-  const { error } = await sb.from("users").upsert({
-    email,
-    keywords,
-    skills,
-    areas,
-    cv_text: cvText || null,
-    languages,
-    work_mode: selectedMode,
-    country: country || null,
-    city: city || null,
-    travel_radius: travelRadius,
-    seniority
-  }, { onConflict: "email" });
+  // Referido: ?ref=<email> en la URL (se guarda para no perderlo si navega)
+  let referredBy = null;
+  try {
+    const qs = new URLSearchParams(location.search).get("ref");
+    if (qs) localStorage.setItem("trabajaya_ref", qs);
+    referredBy = localStorage.getItem("trabajaya_ref") || null;
+    if (referredBy && referredBy.toLowerCase() === email.toLowerCase()) referredBy = null;
+  } catch (_) {}
+
+  // Alta por RPC signup() (modo nuevo, con doble opt-in). Si la función
+  // todavía no existe en Supabase, cae al upsert clásico para no romper nada.
+  let error = null, nuevoModo = true;
+  {
+    const r = await sb.rpc("signup", {
+      p_email: email, p_keywords: keywords, p_skills: skills, p_areas: areas,
+      p_cv_text: cvText || null, p_languages: languages, p_work_mode: selectedMode,
+      p_country: country || null, p_city: city || null, p_travel_radius: travelRadius,
+      p_seniority: seniority, p_referred_by: referredBy
+    });
+    error = r.error;
+    if (error && /signup|PGRST202|function/i.test(error.message || "")) {
+      nuevoModo = false;
+      const r2 = await sb.from("users").upsert({
+        email, keywords, skills, areas, cv_text: cvText || null, languages,
+        work_mode: selectedMode, country: country || null, city: city || null,
+        travel_radius: travelRadius, seniority
+      }, { onConflict: "email" });
+      error = r2.error;
+    }
+  }
 
   btn.disabled = false;
   btn.textContent = "Activar mis alertas gratis";
@@ -1441,7 +1464,9 @@ document.getElementById("form").addEventListener("submit", async (e) => {
     `Vamos a buscarte ofertas ${modoTexto}` +
     (skills.length ? ` que matcheen con: <b>${skills.join(", ")}</b>.` : ".") +
     ` Por los idiomas que hablás, tenés alcance en: ${regiones}.` +
-    ` Revisá tu correo cada tanto (y spam la primera vez) — el robot corre cada 2 horas.`;
+    (nuevoModo
+      ? ` <b>Importante:</b> te mandamos un mail para confirmar tu dirección (mirá también en spam). Hasta que no lo confirmes no te llegan alertas. Después, el robot corre cada 2 horas.`
+      : ` Revisá tu correo cada tanto (y spam la primera vez) — el robot corre cada 2 horas.`);
 
   renderKit(areas, seniority, skills, country);
 
@@ -1480,6 +1505,11 @@ document.getElementById("form").addEventListener("submit", async (e) => {
   consentRow.style.display = "none";
   document.getElementById("consent").checked = false;
 });
+
+// ---------- PWA: instalable en el celular ----------
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => { navigator.serviceWorker.register("sw.js").catch(() => {}); });
+}
 
 // ---------- Modo oscuro (accesibilidad) ----------
 const themeToggle = document.getElementById("themeToggle");
