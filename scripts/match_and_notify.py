@@ -886,9 +886,51 @@ def matches_seniority(text, seniority):
     return any(term in t for term in terms)
 
 
+# Sinónimos por rubro (misma tabla que AREA_KEYWORDS en index.html) para que
+# "Ventas" matchee títulos como "Asesor Comercial" o "Vendedor/a", y en inglés
+# "Sales Representative". Antes solo se buscaba la palabra literal del rubro.
+AREA_SYNONYMS = {
+    "Programación / IT": ["programador", "desarrollador", "developer", "software", "python", "javascript", "sql", "frontend", "backend", "full stack", "devops", "sistemas", "engineer"],
+    "Diseño": ["diseño gráfico", "diseñador", "designer", "figma", "photoshop", "illustrator", "ui/ux", "ux/ui", "ux", "ui"],
+    "Marketing": ["marketing", "seo", "redes sociales", "community manager", "google ads", "publicidad", "growth"],
+    "Datos": ["data analyst", "análisis de datos", "analista de datos", "power bi", "tableau", "big data", "data scientist", "científico de datos", "data engineer"],
+    "Administración": ["administrativo", "administración", "asistente administrativo", "secretaria", "secretario", "administrative", "office manager"],
+    "Salud": ["enfermería", "enfermero", "enfermera", "médico", "médica", "medicina", "paciente", "clínica", "hospital", "kinesiología", "odontología", "nurse"],
+    "Educación": ["docente", "profesor", "profesora", "maestro", "maestra", "educación", "enseñanza", "capacitación", "teacher", "tutor"],
+    "Gastronomía": ["cocina", "chef", "cocinero", "gastronomía", "mozo", "camarero", "bartender", "repostería"],
+    "Construcción": ["construcción", "albañil", "obra", "arquitecto", "ingeniero civil", "maestro mayor de obras"],
+    "Logística": ["logística", "almacén", "depósito", "supply chain", "transporte", "distribución", "logistics", "chofer", "repartidor"],
+    "Ventas": ["ventas", "vendedor", "vendedora", "comercial", "account executive", "representante de ventas", "sales", "ejecutivo de cuentas", "promotor", "telemarketing"],
+    "Atención al cliente": ["atención al cliente", "call center", "soporte al cliente", "customer service", "customer support", "mesa de ayuda", "help desk"],
+    "Recursos Humanos": ["recursos humanos", "reclutamiento", "selección de personal", "rrhh", "talento humano", "recruiter", "human resources"],
+    "Legal": ["abogado", "abogada", "legal", "derecho", "paralegal", "estudio jurídico", "lawyer"],
+    "Finanzas": ["finanzas", "contador", "contadora", "contabilidad", "tesorería", "auditoría", "analista financiero", "accountant", "finance", "cobranzas"],
+    "Ingeniería": ["ingeniero", "ingeniera", "ingeniería", "engineer"],
+    "Turismo": ["turismo", "hotelería", "recepcionista", "agencia de viajes", "hotel"],
+    "Manufactura": ["manufactura", "producción", "planta", "operario", "operaria", "fábrica"],
+    "Agricultura": ["agricultura", "agro", "agronomía", "cultivo", "campo"],
+    "Seguridad": ["seguridad", "vigilancia", "guardia de seguridad"],
+}
+
+
+def expand_terms(user):
+    """keywords + skills + rubros + sinónimos del rubro, sin duplicados."""
+    terms = (user.get("keywords") or []) + (user.get("skills") or [])
+    for area in user.get("areas") or []:
+        terms.append(area)
+        terms += AREA_SYNONYMS.get(area, [])
+        # rubros escritos a mano por el usuario: buscar por coincidencia parcial
+        na = normalize_text(area)
+        for k, syn in AREA_SYNONYMS.items():
+            nk = normalize_text(k)
+            if area != k and (na in nk or nk in na or any(w in nk for w in na.split() if len(w) >= 5)):
+                terms += syn
+    return [t for t in dict.fromkeys(t.strip() for t in terms if t and t.strip())]
+
+
 def match_score(job_text, user_terms):
-    t = job_text.lower()
-    return sum(1 for term in user_terms if term and term.lower() in t)
+    t = normalize_text(job_text)
+    return sum(1 for term in user_terms if term and normalize_text(term) in t)
 
 
 def normalize_text(s):
@@ -1226,11 +1268,7 @@ def main():
     for user in users:
         if not digest_due(user, now):
             continue
-        user_terms = (
-            (user.get("keywords") or [])
-            + (user.get("skills") or [])
-            + (user.get("areas") or [])
-        )
+        user_terms = expand_terms(user)
         seniority = user.get("seniority") or "cualquiera"
         sent_links = get_sent_links(user["id"])
 
