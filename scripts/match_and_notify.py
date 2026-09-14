@@ -269,12 +269,13 @@ def send_kit_email(user):
     seguimiento. Devuelve False si no se pudo mandar (para no marcarlo
     como enviado y reintentar en la próxima corrida)."""
     areas = user.get("areas") or []
-    if not areas:
-        print(f"Sin rubro para armar el kit de {user['email']}, se omite (se reintenta cuando cargue un rubro)")
-        return False
-
     seniority = user.get("seniority") or "cualquiera"
     skills = list(dict.fromkeys((user.get("skills") or []) + (user.get("keywords") or [])))
+    if not areas and not skills:
+        # Sin rubro ni habilidades no hay con qué armar búsquedas: se marca
+        # como enviado para no reintentarlo en cada corrida (antes quedaba
+        # en loop infinito) y se le manda igual el kit genérico.
+        print(f"Kit genérico para {user['email']} (sin rubro ni habilidades cargadas)")
     country = user.get("country")
 
     simple, boolean, links = generar_kit_links(areas, seniority, skills, country)
@@ -614,6 +615,9 @@ def send_coaching_email(email, diag, token=None):
 
 def clean(html):
     text = re.sub(r"<[^>]+>", " ", html or "")
+    text = html_lib.unescape(text)
+    # algunas fuentes mandan markdown crudo (## títulos, **negrita**, listas)
+    text = re.sub(r"[#*_`>\\]+", " ", text)
     return re.sub(r"\s+", " ", text).strip()
 
 
