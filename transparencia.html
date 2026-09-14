@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>trabajaya — Cómo funciona (transparencia)</title>
+<meta name="description" content="Cómo trabajaya busca ofertas, cómo detecta estafas laborales y qué hace (y qué no) con tus datos.">
+<link rel="canonical" href="https://kxl100rx.github.io/trabajaya/transparencia.html">
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif; background:#0f0a1f; color:#e5e2f0;
+    margin:0; padding:24px 16px 60px; line-height:1.6;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  h1 { color:#fff; font-size: 24px; }
+  h2 { color:#c4b5fd; font-size: 16px; margin-top: 26px; }
+  p, li { font-size: 14px; color:#d4d0e6; }
+  a { color:#a78bfa; }
+  .note {
+    background: rgba(167,139,250,.12); border:1px solid rgba(167,139,250,.35); border-radius:10px;
+    padding:12px 14px; font-size: 12.5px; color:#e9d5ff; margin: 16px 0;
+  }
+  .back { display:inline-block; margin-bottom: 16px; color:#a78bfa; text-decoration:none; font-size:13px; }
+  ul { padding-left: 20px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="index.html">← Volver a trabajaya</a>
+  <h1>Cómo funciona trabajaya</h1>
+  <p><i>Última actualización: septiembre de 2026.</i></p>
+
+  <div class="note">Creemos que un servicio que te pide tu email y tu CV tiene que explicar exactamente qué hace con
+  ellos. Esta página existe para eso. El código del robot es público en
+  <a href="https://github.com/kxl100RX/trabajaya" target="_blank" rel="noopener">GitHub</a>.</div>
+
+  <h2>1. De dónde salen las ofertas</h2>
+  <p>Cada 2 horas un robot lee portales de empleo públicos (feeds RSS y APIs abiertas como We Work Remotely,
+  Remotive, Remote OK, Arbeitnow, Working Nomads, Himalayas, Jobicy y Vacantes Digitales para Latinoamérica).
+  Cada portal se consulta <b>una sola vez por corrida</b>, sin importar cuántas personas estén anotadas, para no
+  sobrecargar a nadie. No accedemos a LinkedIn, Indeed ni Computrabajo de forma automática: para esos portales te
+  mandamos un “Kit de Búsqueda” con los links ya armados para que actives las alertas con tu propia cuenta.</p>
+
+  <h2>2. Cómo se decide qué te llega</h2>
+  <ul>
+    <li>Se comparan tus palabras clave, habilidades y rubro con el título y la descripción de cada aviso.</li>
+    <li>Si elegiste un nivel (junior, semi senior, senior, gerencial), el aviso tiene que mencionarlo. Si elegiste
+    “cualquiera”, no se filtra por nivel.</li>
+    <li>Si cargaste tu ciudad y pediste ofertas solo en tu zona, se descartan las presenciales de otra localidad.</li>
+    <li>Las ofertas se ordenan por cuánto coinciden con tu perfil (las coincidencias en el título valen doble) y se
+    mandan como máximo 15 por mail. Nunca se repite una oferta que ya te enviamos.</li>
+    <li>Si el mismo aviso aparece en más de un portal, te lo mandamos una sola vez.</li>
+  </ul>
+
+  <h2>3. Cómo detectamos estafas laborales</h2>
+  <p>Antes de enviarte una oferta, el robot busca frases típicas de fraude. Si encuentra alguna, <b>no la oculta</b>
+  (podría equivocarse) pero te la marca con una advertencia. Las señales que revisa hoy:</p>
+  <ul>
+    <li>Te piden pagar para postularte (inscripción, arancel, depósito, “kit”).</li>
+    <li>Esquema piramidal o multinivel (“ganá por cada persona que sumes”).</li>
+    <li>Promesas poco creíbles (“ganá dinero fácil”, “ingresos ilimitados desde tu casa”).</li>
+    <li>Piden datos sensibles antes de una entrevista (DNI por WhatsApp, cuenta o clave bancaria).</li>
+    <li>Te piden comprar equipo o insumos antes de empezar.</li>
+    <li>Pago fuera de nómina o en criptomonedas.</li>
+    <li>Contratación “inmediata” sin entrevista ni proceso.</li>
+    <li>Urgencia sospechosa sin datos de la empresa (“cupos limitados”, “respondé en 2 horas”).</li>
+    <li>Piden gift cards / tarjetas de regalo como pago o depósito.</li>
+    <li>“Tareas simples” con retiro bloqueado hasta que deposites.</li>
+    <li>Piden instalar apps fuera de las tiendas oficiales (APK por WhatsApp).</li>
+    <li>Piden usar tu cuenta bancaria para recibir y reenviar dinero (mula financiera).</li>
+    <li>Cobran un curso o “seguro de contratación” obligatorio antes de contratar.</li>
+    <li>Avisos en inglés con patrones de fraude (Western Union, MoneyGram, “processing fee”).</li>
+  </ul>
+  <p>Regla simple: <b>un empleo real nunca te cobra a vos.</b> Si ves una oferta sospechosa que no marcamos,
+  reportala con el link que aparece al pie de cada oferta en el mail.</p>
+
+  <h2>4. Qué NO hacemos con tus datos</h2>
+  <ul>
+    <li>No vendemos ni compartimos tu email ni tu CV con empresas, portales ni anunciantes.</li>
+    <li>No accedemos a tus cuentas de LinkedIn, Indeed ni de ningún otro portal.</li>
+    <li>Nadie puede ver tu perfil desde el sitio: la base de datos está protegida y solo el robot la lee.</li>
+    <li>No te mandamos publicidad: solo alertas de empleo, el Kit de Búsqueda (una vez) y tu diagnóstico de
+    seguimiento (si lo usás).</li>
+  </ul>
+
+  <h2>5. Cómo darte de baja</h2>
+  <p>Todos los mails tienen un link “Darme de baja” al pie. También podés escribir a
+  <a href="mailto:galeanofacal@gmail.com?subject=BAJA">galeanofacal@gmail.com</a> con asunto BAJA y borramos todo
+  lo tuyo.</p>
+
+  <p style="margin-top:28px"><a href="privacidad.html">Política de Privacidad y Términos</a></p>
+</div>
+</body>
+</html>

@@ -88,3 +88,10 @@ create policy "cualquiera puede registrar su seguimiento"
 -- nunca expuesta en el sitio) puede leerlo para generar el coaching.
 
 alter table users add column if not exists last_coaching_sent_at timestamptz;
+
+-- Columnas que index.html ya envía desde el formulario (faltaban en este archivo).
+alter table users add column if not exists city text;
+alter table users add column if not exists travel_radius text default 'cualquiera';
+-- Nota: index.html hace UPSERT por email desde el navegador (anon). Para que
+-- un usuario ya registrado pueda actualizar su perfil hace falta una política
+-- de UPDATE acotada; sin ella el upsert falla con RLS. Revisar en Supabase.

@@ -25,6 +25,14 @@
 <script type="application/ld+json">
 {"@context":"https://schema.org","@type":"WebApplication","name":"trabajaya","url":"https://kxl100rx.github.io/trabajaya/","applicationCategory":"BusinessApplication","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"description":"Alertas de empleo automáticas por mail, gratis para siempre, con un asistente de IA opcional para acompañar cada postulación."}
 </script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[
+{"@type":"Question","name":"¿Cuánto cuesta trabajaya?","acceptedAnswer":{"@type":"Answer","text":"Las alertas de empleo por mail son gratis para siempre. Existe una capa Premium opcional con un asistente de IA para acompañar cada postulación."}},
+{"@type":"Question","name":"¿Cada cuánto llegan las alertas?","acceptedAnswer":{"@type":"Answer","text":"El robot revisa los portales cada 2 horas y te manda por mail solo las ofertas nuevas que matchean con tu perfil. Nunca repite una oferta ya enviada."}},
+{"@type":"Question","name":"¿Sirve para trabajo remoto y presencial?","acceptedAnswer":{"@type":"Answer","text":"Sí. Podés elegir remoto mundial, remoto dentro de tu país, híbrido o presencial, y filtrar por tu ciudad si querés."}},
+{"@type":"Question","name":"¿Cómo evita las estafas laborales?","acceptedAnswer":{"@type":"Answer","text":"Cada oferta pasa por un detector de señales de estafa (pedidos de pago, esquemas piramidales, datos sensibles antes de la entrevista, pagos en cripto, gift cards y más). Si detecta algo, la oferta llega marcada con una advertencia."}}
+]}
+</script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/mammoth@1.4.9/mammoth.browser.min.js"></script>
@@ -404,7 +412,7 @@
     <div id="revealSection">
       <div class="step s2">
         <label><span class="stepnum">3</span><span data-i18n="step3_label">Tu email</span></label>
-        <input type="email" id="email" required data-i18n-ph="ph_email" placeholder="vos@ejemplo.com">
+        <input type="email" id="email" required aria-required="true" autocomplete="email" data-i18n-ph="ph_email" placeholder="vos@ejemplo.com">
         <small id="emailAutoHint" style="display:none;color:#16a34a;font-weight:600">✅ Lo tomamos de tu CV — revisalo y corregilo si hace falta</small>
       </div>
 
@@ -453,16 +461,17 @@
     </div>
 
     <label id="consentRow" style="display:none;align-items:flex-start;gap:8px;font-size:12.5px;color:#8a86a8;margin:12px 0 4px;cursor:pointer">
-      <input type="checkbox" id="consent" style="margin-top:3px" required>
+      <input type="checkbox" id="consent" style="margin-top:3px" required aria-required="true">
       <span data-i18n="consent_text">Acepto que trabajaya guarde mi email y mi CV para buscarme ofertas de empleo, según la
         <a href="privacidad.html" target="_blank" style="color:inherit;text-decoration:underline">Política de Privacidad</a>.</span>
     </label>
     <button type="submit" id="btn" style="display:none" data-i18n="submit_btn">Activar mis alertas gratis</button>
-    <div id="msg"></div>
+    <div id="msg" role="status" aria-live="polite"></div>
     <div id="kitPanel"></div>
   </form>
   <p class="footer-note"><span data-i18n="footer_note">Tus datos solo se usan para buscarte trabajo. Nadie más puede ver tu perfil.</span> ·
-  <a href="privacidad.html" style="color:inherit;text-decoration:underline" data-i18n="footer_privacy">Privacidad y Términos</a></p>
+  <a href="privacidad.html" style="color:inherit;text-decoration:underline" data-i18n="footer_privacy">Privacidad y Términos</a> ·
+  <a href="transparencia.html" style="color:inherit;text-decoration:underline" data-i18n="footer_transparency">Cómo funciona</a></p>
 </div>
 
 <script>
@@ -527,6 +536,7 @@ const I18N = {
     consent_text: 'I agree that trabajaya stores my email and CV to search for job offers for me, per the <a href="privacidad.html" target="_blank" style="color:inherit;text-decoration:underline">Privacy Policy</a>.',
     submit_btn: "Activate my free alerts",
     footer_note: "Your data is only used to search for jobs for you. No one else can see your profile.",
+    footer_transparency: "How it works",
     footer_privacy: "Privacy & Terms",
   },
 };

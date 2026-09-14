@@ -2,7 +2,7 @@
 
 > Este archivo existe para que cualquier sesión de Claude (o vos, Ruben) pueda
 > retomar el proyecto sin tener que re-explicar qué se hizo. Se actualiza cada
-> vez que hay un cambio de fondo. Última actualización: 18/08/2026.
+> vez que hay un cambio de fondo. Última actualización: 14/09/2026.
 
 ## Qué es esto
 Plataforma gratuita de alertas de empleo. Rastrea ofertas en portales grandes
@@ -92,6 +92,23 @@ formatos:
 - Tablero HTML interactivo, filtrable por fase, agrupado por categoría —
   persistido como artifact de Cowork en el escritorio de Ruben
   ("trabajaya-backlog").
+
+## Cambios del 14/09/2026 (lote consolidado, 27 días de backlog)
+- `scripts/match_and_notify.py`: URLs viejas `trabajoya` corregidas (4), 14 categorías
+  de detección de estafas (eran 4), dedup de avisos cross-portal por título,
+  ranking por relevancia (antes: primeras 15 en orden de feed), escape HTML de
+  títulos/descripciones, botón "Compartir por WhatsApp" y "Reportar oferta rota"
+  por oferta, footer "Darme de baja" + headers `List-Unsubscribe` en los 3 mails,
+  timeout en feeds RSS (antes podían colgar la corrida), `sent_jobs` en lote y
+  **solo se marca enviado si Brevo aceptó el mail** (antes se perdían ofertas
+  si el envío fallaba). Etiqueta `hibrido` agregada (antes salía el código crudo).
+- `index.html`: FAQPage JSON-LD, accesibilidad (`aria-live` en #msg,
+  `aria-required`, `autocomplete=email`), link a "Cómo funciona".
+- `transparencia.html` (nueva), `privacidad.html` (ya no dice "sin analítica":
+  el sitio tiene GA4 desde el commit 4f35157), `sitemap.xml`, `supabase_schema.sql`
+  (columnas `city`/`travel_radius` que el formulario ya enviaba).
+- Variable opcional nueva para Actions: `SUPPORT_EMAIL` (destino de bajas y
+  reportes; si no está, usa `SENDER_EMAIL`).
 
 ## Cosas que quedaron pendientes / a retomar
 1. Confirmar si se pagó el VEP de INPI.
