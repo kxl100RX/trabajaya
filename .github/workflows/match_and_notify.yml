@@ -5,15 +5,25 @@ on:
     - cron: '0 */2 * * *'   # cada 2 horas
   workflow_dispatch:         # permite ejecutarlo manualmente con un boton
 
+# Necesario para que el robot pueda commitear data/ofertas.json (la página
+# pública ofertas.html se alimenta de ese archivo).
+permissions:
+  contents: write
+
+concurrency:
+  group: match-and-notify
+  cancel-in-progress: false
+
 jobs:
   run:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
-          python-version: '3.11'
+          python-version: '3.12'
+          cache: 'pip'
 
       - name: Instalar dependencias
         run: pip install -r requirements.txt
@@ -24,4 +34,16 @@ jobs:
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           BREVO_API_KEY: ${{ secrets.BREVO_API_KEY }}
           SENDER_EMAIL: ${{ secrets.SENDER_EMAIL }}
+          SUPPORT_EMAIL: ${{ secrets.SUPPORT_EMAIL }}
         run: python scripts/match_and_notify.py
+
+      - name: Publicar data/ofertas.json (alimenta ofertas.html)
+        run: |
+          if [ ! -f data/ofertas.json ]; then echo "sin ofertas.json, nada que publicar"; exit 0; fi
+          git config user.name "trabajaya-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add data/ofertas.json
+          if git diff --cached --quiet; then echo "sin cambios"; exit 0; fi
+          git commit -m "bot: ofertas.json $(date -u +%Y-%m-%dT%H:%MZ) [skip ci]"
+          git pull --rebase --autostash origin main || true
+          git push origin HEAD:main
