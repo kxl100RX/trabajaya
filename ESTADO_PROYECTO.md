@@ -109,6 +109,9 @@ sigue funcionando en modo clásico (el script y el sitio lo detectan solos).
 - **Fuentes en español**: Computrabajo (publicadas hoy, AR/MX/CO/CL/PE/EC, ~180
   avisos/corrida, filtradas por país del usuario salvo remotas) y Get on Board
   (100 avisos, 35% con salario real).
+- **Matching con sinónimos por rubro** (`AREA_SYNONYMS`, misma tabla que
+  `AREA_KEYWORDS` del formulario): "Ventas" ahora matchea "Asesor Comercial",
+  "Vendedor/a", "Sales Representative", etc. Antes solo la palabra literal.
 - **Badges** en cada oferta del mail: salario real cuando la fuente lo publica
   (Remote OK, Remotive, Get on Board), ubicación, fuente.
 - **`ofertas.html`** pública con filtros y JobPosting JSON-LD (Google for Jobs),
