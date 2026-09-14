@@ -53,15 +53,17 @@ RSS_FEEDS = [
     {"url": "https://weworkremotely.com/categories/remote-customer-support-jobs.rss", "lang": "en"},
     {"url": "https://weworkremotely.com/categories/remote-sales-and-marketing-jobs.rss", "lang": "en"},
     {"url": "https://weworkremotely.com/categories/remote-management-and-finance-jobs.rss", "lang": "en"},
-    {"url": "https://remotive.com/feed/jobs", "lang": "en"},
-    {"url": "https://remoteok.com/remote-jobs.rss", "lang": "en"},
-    {"url": "https://www.arbeitnow.com/feed", "lang": "en"},
-    {"url": "https://www.workingnomads.com/jobs.rss", "lang": "en"},
+    # Remotive, RemoteOK, Working Nomads y Arbeitnow dieron de baja sus RSS
+    # (404/410/HTML el 14/09/2026): ahora se leen por sus APIs JSON, ver JSON_FEEDS.
 ]
 
 JSON_FEEDS = [
     {"url": "https://himalayas.app/jobs/api", "lang": "en", "kind": "himalayas"},
     {"url": "https://jobicy.com/api/v2/remote-jobs?count=50", "lang": "en", "kind": "jobicy"},
+    {"url": "https://remotive.com/api/remote-jobs", "lang": "en", "kind": "remotive"},
+    {"url": "https://remoteok.com/api", "lang": "en", "kind": "remoteok"},
+    {"url": "https://www.workingnomads.com/api/exposed_jobs/", "lang": "en", "kind": "workingnomads"},
+    {"url": "https://www.arbeitnow.com/api/job-board-api", "lang": "en", "kind": "arbeitnow"},
     # API pública, gratuita, sin key ni rate limit. Cubre LATAM (incluye
     # Argentina) con avisos remotos, hibridos Y PRESENCIALES -- es la
     # unica fuente que hoy nos da ofertas presenciales reales, no solo
@@ -554,6 +556,43 @@ def fetch_json():
                         "link": j.get("url", ""),
                         "lang": feed_cfg["lang"],
                         "location": "",
+                    })
+            elif feed_cfg["kind"] == "remotive":
+                for j in (data.get("jobs") or [])[:60]:
+                    jobs.append({
+                        "title": j.get("title", ""),
+                        "desc": clean(j.get("description", "")),
+                        "link": j.get("url", ""),
+                        "lang": feed_cfg["lang"],
+                        "location": "",
+                    })
+            elif feed_cfg["kind"] == "remoteok":
+                # el primer elemento del array es un aviso legal, no una oferta
+                for j in [x for x in data if isinstance(x, dict) and x.get("position")][:60]:
+                    jobs.append({
+                        "title": j.get("position", ""),
+                        "desc": clean(j.get("description", "")),
+                        "link": j.get("url") or j.get("apply_url", ""),
+                        "lang": feed_cfg["lang"],
+                        "location": "",
+                    })
+            elif feed_cfg["kind"] == "workingnomads":
+                for j in (data if isinstance(data, list) else [])[:60]:
+                    jobs.append({
+                        "title": j.get("title", ""),
+                        "desc": clean(j.get("description", "")),
+                        "link": j.get("url", ""),
+                        "lang": feed_cfg["lang"],
+                        "location": "",
+                    })
+            elif feed_cfg["kind"] == "arbeitnow":
+                for j in (data.get("data") or [])[:60]:
+                    jobs.append({
+                        "title": j.get("title", ""),
+                        "desc": clean(j.get("description", "")),
+                        "link": j.get("url", ""),
+                        "lang": feed_cfg["lang"],
+                        "location": j.get("location") or "",
                     })
             elif feed_cfg["kind"] == "vacantesdigitales":
                 for j in (data.get("data") or [])[:80]:
