@@ -367,7 +367,8 @@ def send_confirmation_emails():
         <a href="{link}" style="background:#7c3aed;color:#fff;padding:12px 22px;border-radius:10px;text-decoration:none;font-weight:bold;font-size:15px">Confirmar mi email</a>
       </p>
       <p style="color:#666;font-size:13px">Si no fuiste vos, ignorá este mail: no te vamos a escribir de nuevo y tus datos se borran solos.</p>
-      <p style="color:#999;font-size:12px;margin-top:20px">Si el botón no funciona, copiá este link: {link}</p>
+      <p style="color:#999;font-size:12px;margin-top:20px">Si el botón no funciona, abrí este link:
+        <a href="{link}" style="color:#7c3aed">{link}</a></p>
     </div>"""
         payload = {
             "sender": {"name": SENDER_NAME, "email": SENDER_EMAIL},
