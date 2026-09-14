@@ -15,10 +15,11 @@ Corre cada 2 horas via GitHub Actions.
 """
 import os
 import html as html_lib
+import json
 import re
 import time
 import unicodedata
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
 
 import feedparser
@@ -34,6 +35,34 @@ TRACKER_URL = SITE_URL + "recursos/tracker-busqueda-laboral.xlsx"
 # Mail al que llegan las bajas y los reportes de ofertas rotas (mailto en el pie de cada mail).
 SUPPORT_EMAIL = os.environ.get("SUPPORT_EMAIL", SENDER_EMAIL)
 MAX_JOBS_PER_MAIL = 15
+MAX_JOBS_PER_DIGEST = 30
+# Archivo público que alimenta ofertas.html (lo commitea el workflow).
+OFERTAS_JSON = os.environ.get("OFERTAS_JSON", "data/ofertas.json")
+# Computrabajo bloquea user-agents de bots aunque solo leamos 2 páginas públicas
+# por país cada 2 horas; usamos un UA de navegador común.
+BROWSER_UA = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36", "Accept-Language": "es-AR,es;q=0.9"}
+
+# Modo nuevo (doble opt-in, preferencias, digest, referidos) se activa solo
+# cuando la migración supabase_migracion_2026-09.sql ya se corrió. Se detecta
+# en runtime para que este script funcione igual antes y después.
+NEW_MODE = False
+
+
+def detect_new_mode():
+    global NEW_MODE
+    try:
+        r = requests.get(
+            f"{SUPABASE_URL}/rest/v1/users",
+            headers=HEADERS,
+            params={"select": "confirmed,confirm_token,frequency,last_digest_sent_at,confirm_sent_at", "limit": "1"},
+            timeout=30,
+        )
+        NEW_MODE = r.status_code == 200
+    except requests.RequestException:
+        NEW_MODE = False
+    print(f"Modo {'NUEVO (doble opt-in + preferencias)' if NEW_MODE else 'clásico (migración 2026-09 no aplicada)'}")
+    return NEW_MODE
+
 
 HEADERS = {
     "apikey": SUPABASE_SERVICE_KEY,
@@ -70,7 +99,18 @@ JSON_FEEDS = [
     # remotas. Trae localidad (address_locality/address_country) que
     # usamos para filtrar por cercania cuando el usuario cargo su ciudad.
     {"url": "https://vacantesdigitales.com/api/list", "lang": "es", "kind": "vacantesdigitales"},
+    # Get on Board: tech/producto/diseño en LatAm, avisos en español, con
+    # rango salarial real cuando la empresa lo publica.
+    {"url": "https://www.getonbrd.com/api/v0/search/jobs?query=a&per_page=100&page=1", "lang": "es", "kind": "getonbrd"},
 ]
+
+# Computrabajo (el portal más usado de LatAm para empleo presencial). No
+# tiene API: se lee la página de "publicadas hoy" (2 páginas por país, 1 vez
+# por corrida, con pausa entre pedidos). Solo trae título/empresa/ciudad, sin
+# descripción, así que el match se hace contra el título.
+COMPUTRABAJO_COUNTRIES = {"ar": "ar.computrabajo.com", "mx": "mx.computrabajo.com", "co": "co.computrabajo.com",
+                          "cl": "cl.computrabajo.com", "pe": "pe.computrabajo.com", "ec": "ec.computrabajo.com"}
+COMPUTRABAJO_PAGES = 2
 
 # Terminos que ayudan a reconocer el nivel de experiencia de un aviso.
 # Solo se usan si el usuario eligio un nivel especifico (no "cualquiera").
@@ -279,7 +319,7 @@ def send_kit_email(user):
         Los links son de mejor esfuerzo — si el país no matchea exacto, ajustalo dentro del portal.
         Nunca accedemos a tus cuentas: vos activás cada alerta con tu propio login.
       </p>
-      {_footer_html(user["email"])}
+      {_footer_html(user["email"], user.get("confirm_token"))}
     </div>"""
 
     payload = {
@@ -287,7 +327,7 @@ def send_kit_email(user):
         "to": [{"email": user["email"]}],
         "subject": "🎁 Tu Kit de Búsqueda Laboral está listo",
         "htmlContent": html,
-        "headers": _brevo_headers_for(user["email"]),
+        "headers": _brevo_headers_for(user["email"], user.get("confirm_token")),
     }
     r = requests.post(
         "https://api.brevo.com/v3/smtp/email",
@@ -302,14 +342,78 @@ def send_kit_email(user):
     return True
 
 
+def send_confirmation_emails():
+    """Doble opt-in: a cada usuario nuevo sin confirmar le mandamos UN mail con
+    el link de confirmación. Hasta que no confirme, no recibe nada más."""
+    if not NEW_MODE:
+        return 0
+    r = requests.get(
+        f"{SUPABASE_URL}/rest/v1/users",
+        headers=HEADERS,
+        params={"select": "id,email,confirm_token", "confirmed": "eq.false", "confirm_sent_at": "is.null", "limit": "200"},
+        timeout=30,
+    )
+    r.raise_for_status()
+    sent = 0
+    for u in r.json():
+        link = f"{SITE_URL}confirmar.html?t={u['confirm_token']}"
+        html = f"""
+    <div style="font-family:Arial,sans-serif;max-width:600px;margin:auto">
+      <h2 style="background:linear-gradient(90deg,#6d28d9,#db2777);-webkit-background-clip:text;background-clip:text;color:transparent">Confirmá tu email</h2>
+      <p style="color:#444;font-size:15px">Alguien (esperamos que vos) se anotó en <b>trabajaya</b> con este email para recibir
+      alertas de empleo gratis. Para empezar a mandarte ofertas necesitamos que confirmes que sos vos:</p>
+      <p style="text-align:center;margin:24px 0">
+        <a href="{link}" style="background:#7c3aed;color:#fff;padding:12px 22px;border-radius:10px;text-decoration:none;font-weight:bold;font-size:15px">Confirmar mi email</a>
+      </p>
+      <p style="color:#666;font-size:13px">Si no fuiste vos, ignorá este mail: no te vamos a escribir de nuevo y tus datos se borran solos.</p>
+      <p style="color:#999;font-size:12px;margin-top:20px">Si el botón no funciona, copiá este link: {link}</p>
+    </div>"""
+        payload = {
+            "sender": {"name": SENDER_NAME, "email": SENDER_EMAIL},
+            "to": [{"email": u["email"]}],
+            "subject": "✅ Confirmá tu email para activar tus alertas de empleo",
+            "htmlContent": html,
+        }
+        try:
+            resp = requests.post("https://api.brevo.com/v3/smtp/email",
+                                 headers={"api-key": BREVO_API_KEY, "Content-Type": "application/json"},
+                                 json=payload, timeout=30)
+        except requests.RequestException as ex:
+            print(f"Confirmación a {u['email']}: error de red {ex}")
+            continue
+        print(f"Confirmación a {u['email']}: status {resp.status_code}")
+        if resp.status_code < 300:
+            requests.patch(f"{SUPABASE_URL}/rest/v1/users", headers=HEADERS, params={"id": f"eq.{u['id']}"},
+                           json={"confirm_sent_at": datetime.now(timezone.utc).isoformat()}, timeout=30)
+            sent += 1
+    return sent
+
+
+def purge_unconfirmed(days=14):
+    """Los que nunca confirmaron en 14 días se borran (prometido en el mail de
+    confirmación y en la política de privacidad)."""
+    if not NEW_MODE:
+        return
+    limit = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    r = requests.delete(
+        f"{SUPABASE_URL}/rest/v1/users",
+        headers={**HEADERS, "Prefer": "return=minimal"},
+        params={"confirmed": "eq.false", "created_at": f"lt.{limit}"},
+        timeout=30,
+    )
+    if r.status_code >= 300:
+        print(f"purge_unconfirmed: {r.status_code} {r.text[:200]}")
+
+
 def get_users_pending_kit():
     r = requests.get(
         f"{SUPABASE_URL}/rest/v1/users",
         headers=HEADERS,
         params={
-            "select": "id,email,areas,seniority,skills,keywords,country",
+            "select": "id,email,areas,seniority,skills,keywords,country" + (",confirm_token" if NEW_MODE else ""),
             "kit_email_sent": "eq.false",
             "active": "eq.true",
+            **({"confirmed": "eq.true"} if NEW_MODE else {}),
         },
         timeout=30,
     )
@@ -353,8 +457,9 @@ def get_users_for_coaching():
         f"{SUPABASE_URL}/rest/v1/users",
         headers=HEADERS,
         params={
-            "select": "id,email,last_coaching_sent_at",
+            "select": "id,email,last_coaching_sent_at" + (",confirm_token" if NEW_MODE else ""),
             "active": "eq.true",
+            **({"confirmed": "eq.true"} if NEW_MODE else {}),
         },
         timeout=30,
     )
@@ -459,7 +564,7 @@ def compute_diagnostico(apps):
     }
 
 
-def send_coaching_email(email, diag):
+def send_coaching_email(email, diag, token=None):
     insights_html = "".join(f"<li style='margin-bottom:8px'>{i}</li>" for i in diag["insights"])
     tiempo_txt = f"{diag['tiempo_prom']} días" if diag["tiempo_prom"] is not None else "sin datos aún"
 
@@ -484,7 +589,7 @@ def send_coaching_email(email, diag):
         Seguí registrando resultados en <a href="https://kxl100rx.github.io/trabajaya/seguimiento.html" style="color:#999">seguimiento.html</a> —
         cuantos más datos cargues, más preciso es este diagnóstico.
       </p>
-      {_footer_html(email)}
+      {_footer_html(email, token)}
     </div>"""
 
     payload = {
@@ -492,7 +597,7 @@ def send_coaching_email(email, diag):
         "to": [{"email": email}],
         "subject": "📊 Tu diagnóstico de búsqueda actualizado",
         "htmlContent": html,
-        "headers": _brevo_headers_for(email),
+        "headers": _brevo_headers_for(email, token),
     }
     r = requests.post(
         "https://api.brevo.com/v3/smtp/email",
@@ -565,16 +670,23 @@ def fetch_json():
                         "link": j.get("url", ""),
                         "lang": feed_cfg["lang"],
                         "location": "",
+                        "salary": (j.get("salary") or "")[:40],
+                        "source": "Remotive",
                     })
             elif feed_cfg["kind"] == "remoteok":
                 # el primer elemento del array es un aviso legal, no una oferta
                 for j in [x for x in data if isinstance(x, dict) and x.get("position")][:60]:
+                    sal = ""
+                    if j.get("salary_min") and j.get("salary_max"):
+                        sal = f"USD {j['salary_min']:,}–{j['salary_max']:,}/año".replace(",", ".")
                     jobs.append({
                         "title": j.get("position", ""),
                         "desc": clean(j.get("description", "")),
                         "link": j.get("url") or j.get("apply_url", ""),
                         "lang": feed_cfg["lang"],
                         "location": "",
+                        "salary": sal,
+                        "source": "Remote OK",
                     })
             elif feed_cfg["kind"] == "workingnomads":
                 for j in (data if isinstance(data, list) else [])[:60]:
@@ -593,6 +705,26 @@ def fetch_json():
                         "link": j.get("url", ""),
                         "lang": feed_cfg["lang"],
                         "location": j.get("location") or "",
+                    })
+            elif feed_cfg["kind"] == "getonbrd":
+                for j in (data.get("data") or [])[:100]:
+                    a = j.get("attributes") or {}
+                    countries = [c for c in (a.get("countries") or []) if isinstance(c, str)]
+                    loc = ", ".join(c for c in countries[:2] if c.lower() != "remote")
+                    if a.get("remote") or "Remote" in countries:
+                        loc = ("Remoto " + loc).strip()
+                    sal = ""
+                    if a.get("min_salary") or a.get("max_salary"):
+                        sal = f"USD {a.get('min_salary') or '?'}–{a.get('max_salary') or '?'}"
+                    jobs.append({
+                        "title": a.get("title", ""),
+                        "desc": clean((a.get("description") or "") + " " + (a.get("functions") or "")),
+                        "link": (j.get("links") or {}).get("public_url", ""),
+                        "lang": "es",
+                        "location": loc,
+                        "country": detectar_codigo_pais(countries[0]) if countries else None,
+                        "salary": sal,
+                        "source": "Get on Board",
                     })
             elif feed_cfg["kind"] == "vacantesdigitales":
                 for j in (data.get("data") or [])[:80]:
@@ -622,8 +754,61 @@ def _title_key(title):
     return t
 
 
+def fetch_computrabajo():
+    """Lee las ofertas publicadas hoy en Computrabajo por país. Parser
+    tolerante: si cambia el HTML, devuelve vacío y avisa, nunca rompe la
+    corrida."""
+    jobs = []
+    art_re = re.compile(r'<article[^>]*class="[^"]*box_offer[^"]*"[^>]*>(.*?)</article>', re.S)
+    link_re = re.compile(r'<a[^>]*class="js-o-link[^"]*"[^>]*href="([^"]+)"[^>]*>(.*?)</a>', re.S)
+    loc_re = re.compile(r'<p class="fs16 fc_base mt5">\s*<span class="mr10">\s*(.*?)\s*</span>', re.S)
+    for cc, host in COMPUTRABAJO_COUNTRIES.items():
+        for page in range(1, COMPUTRABAJO_PAGES + 1):
+            url = f"https://{host}/ofertas-de-trabajo/?pubdate=1" + (f"&p={page}" if page > 1 else "")
+            try:
+                r = requests.get(url, headers=BROWSER_UA, timeout=20)
+                if r.status_code != 200:
+                    print(f"Computrabajo {cc} p{page}: status {r.status_code}")
+                    break
+                arts = art_re.findall(r.text)
+                if not arts:
+                    print(f"Computrabajo {cc} p{page}: 0 avisos (¿cambió el HTML?)")
+                    break
+                for a in arts:
+                    m = link_re.search(a)
+                    if not m:
+                        continue
+                    href, title = m.group(1), clean(m.group(2))
+                    if href.startswith("/"):
+                        href = f"https://{host}{href}"
+                    href = href.split("#")[0]
+                    lm = loc_re.search(a)
+                    loc = clean(lm.group(1)) if lm else ""
+                    remoto = "remoto" in normalize_text(a)
+                    flat = clean(a)
+                    # empresa: el texto del link a /empresas/
+                    cm = re.search(r'href="[^"]*/empresas/[^"]*"[^>]*>(.*?)</a>', a, re.S)
+                    company = clean(cm.group(1)) if cm else ""
+                    jobs.append({
+                        "title": title,
+                        "desc": " · ".join(x for x in [company, loc, "Remoto" if remoto else ""] if x),
+                        "link": href,
+                        "lang": "es",
+                        "location": ("Remoto " if remoto else "") + loc,
+                        "country": cc,
+                        "salary": "",
+                        "source": f"Computrabajo {cc.upper()}",
+                    })
+            except Exception as ex:
+                print(f"Error leyendo Computrabajo {cc} p{page}: {ex}")
+                break
+            time.sleep(1.5)
+    print(f"Computrabajo: {len(jobs)} avisos de hoy en {len(COMPUTRABAJO_COUNTRIES)} países")
+    return jobs
+
+
 def fetch_jobs():
-    jobs = fetch_rss() + fetch_json()
+    jobs = fetch_rss() + fetch_json() + fetch_computrabajo()
     # de-duplicar por link y por titulo identico entre fuentes distintas
     seen_links, seen_titles, unique = set(), set(), []
     dup_cross = 0
@@ -648,8 +833,10 @@ def get_active_users():
         f"{SUPABASE_URL}/rest/v1/users",
         headers=HEADERS,
         params={
-            "select": "id,email,keywords,skills,areas,languages,work_mode,country,city,travel_radius,seniority",
+            "select": "id,email,keywords,skills,areas,languages,work_mode,country,city,travel_radius,seniority"
+                      + (",confirm_token,frequency,last_digest_sent_at" if NEW_MODE else ""),
             "active": "eq.true",
+            **({"confirmed": "eq.true"} if NEW_MODE else {}),
         },
         timeout=30,
     )
@@ -709,6 +896,20 @@ def normalize_text(s):
 def es_presencial_o_hibrido(text):
     t = normalize_text(text)
     return any(w in t for w in ["presencial", "hibrido", "onsite", "on-site", "in office", "in-office"])
+
+
+def fuera_de_pais(job, user):
+    """Avisos locales (Computrabajo) de un país distinto al del usuario no se
+    mandan, salvo que el aviso sea remoto. Sin país cargado, no filtramos."""
+    jc = job.get("country")
+    if not jc:
+        return False
+    uc = detectar_codigo_pais(user.get("country"))
+    if not uc:
+        return False
+    if uc == jc:
+        return False
+    return "remoto" not in normalize_text(job.get("location", ""))
 
 
 def fuera_de_zona(job, user):
@@ -809,21 +1010,28 @@ def _esc(t):
     return html_lib.escape(str(t or ""), quote=True)
 
 
-def _footer_html(to_email):
-    baja = f"mailto:{SUPPORT_EMAIL}?subject=BAJA&body=" + quote(f"Quiero darme de baja de las alertas: {to_email}")
+def _footer_html(to_email, token=None):
+    if token:
+        baja = f"{SITE_URL}preferencias.html?t={token}"
+        prefs = f' · <a href="{baja}" style="color:#999">Mis preferencias (pausar, frecuencia, invitar)</a>'
+    else:
+        baja = f"mailto:{SUPPORT_EMAIL}?subject=BAJA&body=" + quote(f"Quiero darme de baja de las alertas: {to_email}")
+        prefs = ""
     return f"""
       <p style="color:#999;font-size:12px;margin-top:24px;line-height:1.6">
         Recibis esto porque te registraste en <a href="{SITE_URL}" style="color:#999">trabajaya</a>, el buscador automatico de empleo.<br>
-        <a href="{baja}" style="color:#999">Darme de baja</a> ·
+        <a href="{baja}" style="color:#999">Darme de baja</a>{prefs} ·
         <a href="{SITE_URL}transparencia.html" style="color:#999">Como funciona</a> ·
         <a href="{SITE_URL}privacidad.html" style="color:#999">Privacidad</a>
       </p>"""
 
 
-def _brevo_headers_for(to_email):
+def _brevo_headers_for(to_email, token=None):
     """Headers List-Unsubscribe (RFC 8058): Gmail/Yahoo los exigen a remitentes
     masivos y mejoran mucho la entregabilidad."""
     baja = f"mailto:{SUPPORT_EMAIL}?subject=BAJA%20{quote(to_email)}"
+    if token:
+        baja = f"{SITE_URL}preferencias.html?t={token}>, <{baja}"
     return {
         "List-Unsubscribe": f"<{baja}>",
         "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
@@ -848,12 +1056,22 @@ def send_email(to_email, jobs, user):
         title = _esc(j["title"])
         link = _esc(j["link"])
         desc = _esc(j["desc"][:220])
+        badges = ""
+        if j.get("salary"):
+            badges += f'<span style="display:inline-block;background:#ecfdf5;color:#065f46;border:1px solid #a7f3d0;border-radius:6px;padding:1px 6px;font-size:11px;margin-right:6px">💰 {_esc(j["salary"])}</span>'
+        if j.get("location"):
+            badges += f'<span style="display:inline-block;background:#f4f4f5;color:#3f3f46;border:1px solid #e4e4e7;border-radius:6px;padding:1px 6px;font-size:11px;margin-right:6px">📍 {_esc(j["location"][:40])}</span>'
+        if j.get("source"):
+            badges += f'<span style="color:#a1a1aa;font-size:11px">{_esc(j["source"])}</span>'
+        if badges:
+            badges = f'<p style="margin:4px 0 0">{badges}</p>'
         wa_text = quote(f"Mirá esta oferta de trabajo: {j['title']} {j['link']} (encontrada con trabajaya {SITE_URL})")
         report = f"mailto:{SUPPORT_EMAIL}?subject=" + quote("Oferta rota o vencida") + "&body=" + quote(f"Link: {j['link']}")
         rows += f"""
         <tr>
           <td style="padding:12px 0;border-bottom:1px solid #eee">
             <a href="{link}" style="font-weight:bold;color:#2563eb;text-decoration:none">{title}</a>
+            {badges}
             <p style="margin:4px 0 0;color:#555;font-size:14px">{desc}...</p>
             {warning_html}
             <p style="margin:6px 0 0;font-size:12px">
@@ -872,15 +1090,21 @@ def send_email(to_email, jobs, user):
       </div>
       <p>Encontramos {len(jobs)} oferta(s) que podrian matchear con tu perfil.</p>
       <table style="width:100%;border-collapse:collapse">{rows}</table>
-      {_footer_html(to_email)}
+      {_footer_html(to_email, user.get("confirm_token"))}
     </div>"""
 
+    freq = user.get("frequency") or "inmediato"
+    subject = f"🔎 {len(jobs)} nuevas ofertas de trabajo para vos"
+    if freq == "diario":
+        subject = f"📬 Tu resumen diario: {len(jobs)} ofertas nuevas"
+    elif freq == "semanal":
+        subject = f"📬 Tu resumen semanal: {len(jobs)} ofertas nuevas"
     payload = {
         "sender": {"name": SENDER_NAME, "email": SENDER_EMAIL},
         "to": [{"email": to_email}],
-        "subject": f"🔎 {len(jobs)} nuevas ofertas de trabajo para vos",
+        "subject": subject,
         "htmlContent": html,
-        "headers": _brevo_headers_for(to_email),
+        "headers": _brevo_headers_for(to_email, user.get("confirm_token")),
     }
     try:
         r = requests.post(
@@ -899,7 +1123,59 @@ def send_email(to_email, jobs, user):
     return True
 
 
+def export_ofertas(all_jobs):
+    """Escribe el JSON público que alimenta ofertas.html (página indexable con
+    JobPosting JSON-LD). Sin datos personales: solo ofertas ya públicas."""
+    out = []
+    flagged = 0
+    for j in all_jobs:
+        razones = senales_de_alerta(j)
+        if razones:
+            flagged += 1
+        out.append({
+            "t": j["title"][:140], "l": j["link"], "d": j["desc"][:260],
+            "s": j.get("source") or ("Vacantes Digitales" if j.get("lang") == "es" else "Feed internacional"),
+            "loc": (j.get("location") or "")[:60], "sal": j.get("salary") or "",
+            "lang": j.get("lang", "en"), "alerta": razones,
+        })
+    # primero las locales en español, después el resto; máximo 150
+    out.sort(key=lambda x: (x["lang"] != "es", bool(x["alerta"])))
+    data = {"generado": datetime.now(timezone.utc).isoformat(), "total_revisadas": len(all_jobs),
+            "con_alerta": flagged, "fuentes": sorted({o["s"] for o in out}), "ofertas": out[:150]}
+    try:
+        os.makedirs(os.path.dirname(OFERTAS_JSON) or ".", exist_ok=True)
+        with open(OFERTAS_JSON, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, separators=(",", ":"))
+        print(f"{OFERTAS_JSON}: {len(out[:150])} ofertas exportadas ({flagged} con señales de alerta)")
+    except OSError as ex:
+        print(f"No se pudo escribir {OFERTAS_JSON}: {ex}")
+
+
+def digest_due(user, now):
+    """True si a este usuario le toca recibir mail en esta corrida según su
+    frecuencia. 'inmediato' = siempre; 'diario' = cada 24 h; 'semanal' = cada 7 días."""
+    freq = user.get("frequency") or "inmediato"
+    if freq == "inmediato":
+        return True
+    last = _parse_iso(user.get("last_digest_sent_at"))
+    if last is None:
+        return True
+    hours = (now - last).total_seconds() / 3600
+    return hours >= (24 if freq == "diario" else 24 * 7) - 1  # -1h de tolerancia por el cron
+
+
+def mark_digest_sent(user_id, when_iso):
+    requests.patch(f"{SUPABASE_URL}/rest/v1/users", headers=HEADERS, params={"id": f"eq.{user_id}"},
+                   json={"last_digest_sent_at": when_iso}, timeout=30)
+
+
 def main():
+    detect_new_mode()
+    n_conf = send_confirmation_emails()
+    if n_conf:
+        print(f"{n_conf} mail(s) de confirmación enviados")
+    purge_unconfirmed()
+
     pending_kit = get_users_pending_kit()
     print(f"{len(pending_kit)} usuario(s) nuevo(s) esperando el Kit de Búsqueda Laboral")
     for user in pending_kit:
@@ -932,7 +1208,7 @@ def main():
         if not should_send:
             continue
         diag = compute_diagnostico(apps)
-        if send_coaching_email(email, diag):
+        if send_coaching_email(email, diag, cu.get("confirm_token")):
             mark_coaching_sent(cu["id"], now.isoformat())
             coaching_sent_count += 1
     print(f"{coaching_sent_count} mail(s) de coaching enviados")
@@ -940,8 +1216,12 @@ def main():
     users = get_active_users()
     all_jobs = fetch_jobs()
     print(f"{len(users)} usuarios activos, {len(all_jobs)} avisos leidos de los feeds")
+    export_ofertas(all_jobs)
+    now = datetime.now(timezone.utc)
 
     for user in users:
+        if not digest_due(user, now):
+            continue
         user_terms = (
             (user.get("keywords") or [])
             + (user.get("skills") or [])
@@ -960,7 +1240,7 @@ def main():
             score = match_score(full_text, user_terms) if user_terms else 0
             if user_terms and score == 0:
                 continue
-            if fuera_de_zona(job, user):
+            if fuera_de_zona(job, user) or fuera_de_pais(job, user):
                 continue
             # las coincidencias en el titulo valen doble: son mucho mas relevantes
             score += match_score(job["title"], user_terms) if user_terms else 0
@@ -968,10 +1248,13 @@ def main():
 
         # las mejores primero (antes se mandaban las primeras 15 en orden de feed)
         scored.sort(key=lambda x: x[0], reverse=True)
-        matches = [j for _, j in scored[:MAX_JOBS_PER_MAIL]]
+        limit = MAX_JOBS_PER_MAIL if (user.get("frequency") or "inmediato") == "inmediato" else MAX_JOBS_PER_DIGEST
+        matches = [j for _, j in scored[:limit]]
         if matches:
             if send_email(user["email"], matches, user):
                 mark_sent_many(user["id"], [j["link"] for j in matches])
+                if NEW_MODE and (user.get("frequency") or "inmediato") != "inmediato":
+                    mark_digest_sent(user["id"], now.isoformat())
             else:
                 print(f"Mail a {user['email']} fallo: se reintenta en la proxima corrida")
         else:
