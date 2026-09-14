@@ -52,6 +52,7 @@
     <select id="lang" aria-label="Idioma"><option value="">Todos los idiomas</option><option value="es">En español</option><option value="en">En inglés</option></select>
   </div>
 
+  <p class="sub" id="chips" aria-label="Búsquedas frecuentes"></p>
   <div id="list" role="list"></div>
   <p class="foot">Las ofertas son de portales públicos y pertenecen a quien las publicó. El detector de estafas marca patrones sospechosos pero puede equivocarse: <b>un empleo real nunca te cobra a vos</b>. <a href="transparencia.html">Cómo funciona</a>.</p>
 </div>
@@ -117,6 +118,16 @@ function injectJsonLd() {
   const sel = document.getElementById("src");
   (DATA.fuentes || []).forEach((f) => { const o = document.createElement("option"); o.value = f; o.textContent = f; sel.appendChild(o); });
   ["q", "src", "lang"].forEach((id) => document.getElementById(id).addEventListener("input", render));
+  // ?q= en la URL (links compartibles y landings por rubro), chips de búsquedas frecuentes
+  const q0 = new URLSearchParams(location.search).get("q");
+  if (q0) document.getElementById("q").value = q0;
+  const chips = ["ventas", "administración", "atención al cliente", "programador", "marketing", "contabilidad", "diseño", "remoto", "junior", "gerente"];
+  document.getElementById("chips").innerHTML = "Buscar: " + chips.map((c) => `<a href="ofertas.html?q=${encodeURIComponent(c)}" style="margin-right:8px">${esc(c)}</a>`).join("");
+  document.getElementById("chips").addEventListener("click", (e) => {
+    const a = e.target.closest("a"); if (!a) return; e.preventDefault();
+    const v = new URL(a.href).searchParams.get("q") || "";
+    document.getElementById("q").value = v; history.replaceState(null, "", "ofertas.html?q=" + encodeURIComponent(v)); render();
+  });
   render();
   injectJsonLd();
 })();
