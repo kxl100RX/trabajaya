@@ -14,6 +14,7 @@ Corre cada 2 horas via GitHub Actions.
 6. Registra lo ya enviado para no repetir avisos.
 """
 import os
+import html as html_lib
 import re
 import time
 import unicodedata
@@ -28,7 +29,11 @@ SUPABASE_SERVICE_KEY = os.environ["SUPABASE_SERVICE_KEY"]
 BREVO_API_KEY = os.environ["BREVO_API_KEY"]
 SENDER_EMAIL = os.environ.get("SENDER_EMAIL", "alertas@example.com")
 SENDER_NAME = os.environ.get("SENDER_NAME", "Alertas de Empleo")
-TRACKER_URL = "https://kxl100rx.github.io/trabajoya/recursos/tracker-busqueda-laboral.xlsx"
+SITE_URL = "https://kxl100rx.github.io/trabajaya/"
+TRACKER_URL = SITE_URL + "recursos/tracker-busqueda-laboral.xlsx"
+# Mail al que llegan las bajas y los reportes de ofertas rotas (mailto en el pie de cada mail).
+SUPPORT_EMAIL = os.environ.get("SUPPORT_EMAIL", SENDER_EMAIL)
+MAX_JOBS_PER_MAIL = 15
 
 HEADERS = {
     "apikey": SUPABASE_SERVICE_KEY,
@@ -104,6 +109,7 @@ LANG_REGIONS = {
 WORK_MODE_LABEL = {
     "remoto_mundial": "remoto, sin importar el pais",
     "remoto_pais": "remoto dentro de tu pais",
+    "hibrido": "hibrido (remoto + presencial) en tu pais",
     "presencial": "presencial en tu pais",
     "cualquiera": "remoto o presencial, sin restriccion",
 }
@@ -256,7 +262,7 @@ def send_kit_email(user):
 
       <div style="background:#f5f3ff;border:1px solid #ddd6fe;border-radius:10px;padding:14px 16px;margin-bottom:8px">
         <b>📈 No hace falta instalar nada ni tener cuenta de Google:</b> registrá cada resultado acá y te mandamos coaching automático por mail.<br>
-        <a href="https://kxl100rx.github.io/trabajoya/seguimiento.html" style="color:#6d28d9;font-weight:bold;text-decoration:none">Registrar seguimiento →</a>
+        <a href="https://kxl100rx.github.io/trabajaya/seguimiento.html" style="color:#6d28d9;font-weight:bold;text-decoration:none">Registrar seguimiento →</a>
       </div>
 
       <div style="background:#ecfdf5;border:1px solid #a7f3d0;border-radius:10px;padding:14px 16px;margin-bottom:8px">
@@ -271,6 +277,7 @@ def send_kit_email(user):
         Los links son de mejor esfuerzo — si el país no matchea exacto, ajustalo dentro del portal.
         Nunca accedemos a tus cuentas: vos activás cada alerta con tu propio login.
       </p>
+      {_footer_html(user["email"])}
     </div>"""
 
     payload = {
@@ -278,6 +285,7 @@ def send_kit_email(user):
         "to": [{"email": user["email"]}],
         "subject": "🎁 Tu Kit de Búsqueda Laboral está listo",
         "htmlContent": html,
+        "headers": _brevo_headers_for(user["email"]),
     }
     r = requests.post(
         "https://api.brevo.com/v3/smtp/email",
@@ -457,7 +465,7 @@ def send_coaching_email(email, diag):
     <div style="font-family:Arial,sans-serif;max-width:600px;margin:auto">
       <h2 style="background:linear-gradient(90deg,#6d28d9,#db2777);-webkit-background-clip:text;background-clip:text;color:transparent">📊 Tu diagnóstico de búsqueda</h2>
       <p style="color:#444;font-size:14px">Esto se arma solo con lo que fuiste cargando en
-      <a href="https://kxl100rx.github.io/trabajoya/seguimiento.html" style="color:#2563eb">Registrar seguimiento</a>.</p>
+      <a href="https://kxl100rx.github.io/trabajaya/seguimiento.html" style="color:#2563eb">Registrar seguimiento</a>.</p>
 
       <table style="width:100%;border-collapse:collapse;margin-bottom:16px;font-size:13px">
         <tr><td style="padding:6px 0;color:#666">Postulaciones registradas</td><td style="padding:6px 0;font-weight:bold;text-align:right">{diag['total']}</td></tr>
@@ -471,9 +479,10 @@ def send_coaching_email(email, diag):
       <ul style="font-size:13.5px;color:#333;padding-left:20px">{insights_html if insights_html else "<li>Seguí cargando postulaciones para que podamos darte recomendaciones más precisas.</li>"}</ul>
 
       <p style="color:#999;font-size:12px;margin-top:20px">
-        Seguí registrando resultados en <a href="https://kxl100rx.github.io/trabajoya/seguimiento.html" style="color:#999">seguimiento.html</a> —
-        cuantos más datos caes, más preciso es este diagnóstico.
+        Seguí registrando resultados en <a href="https://kxl100rx.github.io/trabajaya/seguimiento.html" style="color:#999">seguimiento.html</a> —
+        cuantos más datos cargues, más preciso es este diagnóstico.
       </p>
+      {_footer_html(email)}
     </div>"""
 
     payload = {
@@ -481,6 +490,7 @@ def send_coaching_email(email, diag):
         "to": [{"email": email}],
         "subject": "📊 Tu diagnóstico de búsqueda actualizado",
         "htmlContent": html,
+        "headers": _brevo_headers_for(email),
     }
     r = requests.post(
         "https://api.brevo.com/v3/smtp/email",
@@ -504,7 +514,9 @@ def fetch_rss():
     jobs = []
     for feed_cfg in RSS_FEEDS:
         try:
-            feed = feedparser.parse(feed_cfg["url"], request_headers=REQUEST_HEADERS)
+            r = requests.get(feed_cfg["url"], headers=REQUEST_HEADERS, timeout=20)
+            r.raise_for_status()
+            feed = feedparser.parse(r.content)
             for e in feed.entries[:40]:
                 jobs.append({
                     "title": e.get("title", ""),
@@ -561,14 +573,34 @@ def fetch_json():
     return jobs
 
 
+def _title_key(title):
+    """Clave conservadora para detectar el mismo aviso publicado en mas de un
+    portal (cross-posting): titulo normalizado, sin acentos ni puntuacion.
+    No usa similitud difusa a proposito: preferimos mandar un duplicado a
+    ocultar una oferta real distinta."""
+    t = normalize_text(title)
+    t = re.sub(r"[^a-z0-9]+", " ", t).strip()
+    return t
+
+
 def fetch_jobs():
     jobs = fetch_rss() + fetch_json()
-    # de-duplicar por link
-    seen, unique = set(), []
+    # de-duplicar por link y por titulo identico entre fuentes distintas
+    seen_links, seen_titles, unique = set(), set(), []
+    dup_cross = 0
     for j in jobs:
-        if j["link"] and j["link"] not in seen:
-            seen.add(j["link"])
-            unique.append(j)
+        if not j["link"] or j["link"] in seen_links:
+            continue
+        tk = _title_key(j["title"])
+        if tk and len(tk) >= 12 and tk in seen_titles:
+            dup_cross += 1
+            continue
+        seen_links.add(j["link"])
+        if tk:
+            seen_titles.add(tk)
+        unique.append(j)
+    if dup_cross:
+        print(f"{dup_cross} aviso(s) duplicados entre portales colapsados")
     return unique
 
 
@@ -597,13 +629,18 @@ def get_sent_links(user_id):
     return {row["job_link"] for row in r.json()}
 
 
-def mark_sent(user_id, link):
-    requests.post(
+def mark_sent_many(user_id, links):
+    """Registra en UNA sola request todas las ofertas enviadas a un usuario."""
+    if not links:
+        return
+    r = requests.post(
         f"{SUPABASE_URL}/rest/v1/sent_jobs",
         headers={**HEADERS, "Prefer": "resolution=ignore-duplicates"},
-        json={"user_id": user_id, "job_link": link},
+        json=[{"user_id": user_id, "job_link": link} for link in links],
         timeout=30,
     )
+    if r.status_code >= 300:
+        print(f"No se pudo registrar sent_jobs para {user_id}: {r.status_code} {r.text[:200]}")
 
 
 def matches_seniority(text, seniority):
@@ -664,7 +701,33 @@ SCAM_SIGNALS = [
     ("promesas poco creibles", ["gana dinero facil", "gana dinero rapido", "trabaja 2 horas y gana",
                                  "sin experiencia gana miles", "ingresos ilimitados desde tu casa"]),
     ("pide datos sensibles antes de una entrevista", ["envia tu dni por whatsapp", "numero de cuenta bancaria",
-                                                        "envia una foto de tu documento", "clave bancaria"]),
+                                                        "envia una foto de tu documento", "clave bancaria",
+                                                        "send your bank details", "send a copy of your id"]),
+    ("pide comprar equipo o insumos antes de empezar", ["comprar tu equipo", "compra de insumos", "adquirir el kit",
+                                                         "comprar la notebook", "purchase equipment", "buy your own equipment"]),
+    ("pago fuera de nomina o en criptomonedas", ["pago en cripto", "pago en criptomonedas", "pago en bitcoin", "pago en usdt",
+                                                  "paid in crypto", "payment in bitcoin", "fuera de nomina", "sin recibo de sueldo"]),
+    ("contratacion sin entrevista ni proceso", ["contratacion inmediata sin entrevista", "sin entrevista", "no necesitas cv",
+                                                "no interview needed", "no interview required", "hired immediately"]),
+    ("urgencia sospechosa sin datos de la empresa", ["cupos limitados", "responde en 2 horas", "responde en las proximas horas",
+                                                     "urgent hiring", "empresa confidencial contrata ya", "ultimos cupos"]),
+    ("solicita gift cards como pago o deposito", ["gift card", "gift cards", "tarjeta de regalo", "tarjetas de regalo",
+                                                  "steam card", "google play card"]),
+    ("estafa de tareas con retiro bloqueado", ["completa tareas simples y gana", "tareas simples desde tu celular",
+                                                "desbloquea tu retiro", "para retirar tus ganancias deposita",
+                                                "task-based earnings", "complete simple tasks and earn"]),
+    ("pide instalar apps fuera de tiendas oficiales", ["instala el apk", "descarga el apk", "te enviamos el apk",
+                                                        "instalador por whatsapp", "install the apk", "download the apk"]),
+    ("pide usar tu cuenta bancaria para recibir y reenviar pagos", ["recibir pagos en tu cuenta", "reenviar el dinero",
+                                                                     "transferir a otra cuenta", "usar tu cuenta bancaria para",
+                                                                     "receive payments on your account", "forward the funds",
+                                                                     "money transfer agent"]),
+    ("cobra curso o capacitacion obligatoria antes de contratar", ["curso obligatorio pago", "capacitacion paga obligatoria",
+                                                                    "seguro de contratacion", "garantia de puesto",
+                                                                    "abonar la capacitacion", "paid training fee",
+                                                                    "training fee required"]),
+    ("aviso en ingles con patrones de scam para puesto local", ["wire transfer required", "processing fee", "send money via",
+                                                                "western union", "moneygram", "cashier's check", "cheque falso"]),
 ]
 
 
@@ -703,7 +766,35 @@ def perfil_resumen(user):
     )
 
 
+def _esc(t):
+    return html_lib.escape(str(t or ""), quote=True)
+
+
+def _footer_html(to_email):
+    baja = f"mailto:{SUPPORT_EMAIL}?subject=BAJA&body=" + quote(f"Quiero darme de baja de las alertas: {to_email}")
+    return f"""
+      <p style="color:#999;font-size:12px;margin-top:24px;line-height:1.6">
+        Recibis esto porque te registraste en <a href="{SITE_URL}" style="color:#999">trabajaya</a>, el buscador automatico de empleo.<br>
+        <a href="{baja}" style="color:#999">Darme de baja</a> ·
+        <a href="{SITE_URL}transparencia.html" style="color:#999">Como funciona</a> ·
+        <a href="{SITE_URL}privacidad.html" style="color:#999">Privacidad</a>
+      </p>"""
+
+
+def _brevo_headers_for(to_email):
+    """Headers List-Unsubscribe (RFC 8058): Gmail/Yahoo los exigen a remitentes
+    masivos y mejoran mucho la entregabilidad."""
+    baja = f"mailto:{SUPPORT_EMAIL}?subject=BAJA%20{quote(to_email)}"
+    return {
+        "List-Unsubscribe": f"<{baja}>",
+        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+    }
+
+
 def send_email(to_email, jobs, user):
+    """Devuelve True solo si Brevo acepto el mail. Si devuelve False, las
+    ofertas NO se marcan como enviadas y se reintentan en la proxima corrida
+    (antes se marcaban igual y el usuario las perdia para siempre)."""
     rows = ""
     for j in jobs:
         razones = senales_de_alerta(j)
@@ -712,15 +803,25 @@ def send_email(to_email, jobs, user):
             warning_html = (
                 f'<p style="margin:6px 0 0;background:#fef2f2;border:1px solid #fecaca;color:#991b1b;'
                 f'font-size:12px;border-radius:6px;padding:6px 8px">'
-                f'⚠️ Señales de alerta: {", ".join(razones)}. Revisá bien antes de compartir datos o pagar '
+                f'⚠️ Señales de alerta: {_esc(", ".join(razones))}. Revisá bien antes de compartir datos o pagar '
                 f"cualquier monto — un empleo real nunca te cobra a vos.</p>"
             )
+        title = _esc(j["title"])
+        link = _esc(j["link"])
+        desc = _esc(j["desc"][:220])
+        wa_text = quote(f"Mirá esta oferta de trabajo: {j['title']} {j['link']} (encontrada con trabajaya {SITE_URL})")
+        report = f"mailto:{SUPPORT_EMAIL}?subject=" + quote("Oferta rota o vencida") + "&body=" + quote(f"Link: {j['link']}")
         rows += f"""
         <tr>
           <td style="padding:12px 0;border-bottom:1px solid #eee">
-            <a href="{j['link']}" style="font-weight:bold;color:#2563eb;text-decoration:none">{j['title']}</a>
-            <p style="margin:4px 0 0;color:#555;font-size:14px">{j['desc'][:220]}...</p>
+            <a href="{link}" style="font-weight:bold;color:#2563eb;text-decoration:none">{title}</a>
+            <p style="margin:4px 0 0;color:#555;font-size:14px">{desc}...</p>
             {warning_html}
+            <p style="margin:6px 0 0;font-size:12px">
+              <a href="https://wa.me/?text={wa_text}" style="color:#16a34a;text-decoration:none;font-weight:bold">📤 Compartir por WhatsApp</a>
+              &nbsp;·&nbsp;
+              <a href="{report}" style="color:#a1a1aa;text-decoration:none">Reportar oferta rota/vencida</a>
+            </p>
           </td>
         </tr>"""
     resumen = perfil_resumen(user)
@@ -732,9 +833,7 @@ def send_email(to_email, jobs, user):
       </div>
       <p>Encontramos {len(jobs)} oferta(s) que podrian matchear con tu perfil.</p>
       <table style="width:100%;border-collapse:collapse">{rows}</table>
-      <p style="color:#999;font-size:12px;margin-top:24px">
-        Recibis esto porque te registraste en el buscador automatico de empleo.
-      </p>
+      {_footer_html(to_email)}
     </div>"""
 
     payload = {
@@ -742,16 +841,23 @@ def send_email(to_email, jobs, user):
         "to": [{"email": to_email}],
         "subject": f"🔎 {len(jobs)} nuevas ofertas de trabajo para vos",
         "htmlContent": html,
+        "headers": _brevo_headers_for(to_email),
     }
-    r = requests.post(
-        "https://api.brevo.com/v3/smtp/email",
-        headers={"api-key": BREVO_API_KEY, "Content-Type": "application/json"},
-        json=payload,
-        timeout=30,
-    )
+    try:
+        r = requests.post(
+            "https://api.brevo.com/v3/smtp/email",
+            headers={"api-key": BREVO_API_KEY, "Content-Type": "application/json"},
+            json=payload,
+            timeout=30,
+        )
+    except requests.RequestException as ex:
+        print(f"Email a {to_email}: error de red {ex}")
+        return False
     print(f"Email a {to_email}: status {r.status_code}")
     if r.status_code >= 300:
         print(r.text)
+        return False
+    return True
 
 
 def main():
@@ -805,24 +911,30 @@ def main():
         seniority = user.get("seniority") or "cualquiera"
         sent_links = get_sent_links(user["id"])
 
-        matches = []
+        scored = []
         for job in all_jobs:
             if job["link"] in sent_links:
                 continue
             full_text = job["title"] + " " + job["desc"]
             if not matches_seniority(full_text, seniority):
                 continue
-            if user_terms and match_score(full_text, user_terms) == 0:
+            score = match_score(full_text, user_terms) if user_terms else 0
+            if user_terms and score == 0:
                 continue
             if fuera_de_zona(job, user):
                 continue
-            matches.append(job)
+            # las coincidencias en el titulo valen doble: son mucho mas relevantes
+            score += match_score(job["title"], user_terms) if user_terms else 0
+            scored.append((score, job))
 
-        matches = matches[:15]
+        # las mejores primero (antes se mandaban las primeras 15 en orden de feed)
+        scored.sort(key=lambda x: x[0], reverse=True)
+        matches = [j for _, j in scored[:MAX_JOBS_PER_MAIL]]
         if matches:
-            send_email(user["email"], matches, user)
-            for j in matches:
-                mark_sent(user["id"], j["link"])
+            if send_email(user["email"], matches, user):
+                mark_sent_many(user["id"], [j["link"] for j in matches])
+            else:
+                print(f"Mail a {user['email']} fallo: se reintenta en la proxima corrida")
         else:
             print(f"Sin novedades para {user['email']}")
 
