@@ -1015,6 +1015,7 @@ SCAM_SIGNALS = [
                                                                     "training fee required"]),
     ("aviso en ingles con patrones de scam para puesto local", ["wire transfer required", "processing fee", "send money via",
                                                                 "western union", "moneygram", "cashier's check", "cheque falso"]),
+                                                                ("cheque de mas para comprar equipo a un proveedor designado", ["te enviamos un cheque por mas del monto acordado", "deposita el cheque y compra el equipo a nuestro proveedor", "proveedor designado por la empresa", "devuelve la diferencia por transferencia", "cash the check and keep the difference", "designated vendor", "we will send you a check for more than the agreed amount", "buy equipment from our approved vendor"]),
 ]
 
 
